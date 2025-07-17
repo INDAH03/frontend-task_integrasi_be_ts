@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { InviteUser } from './inviteSlice';
 
-const BASE_URL = 'http://localhost:3000/api';
+const BASE_URL = 'http://localhost:5001/api';
 
 // ──────────────── INVITE USER ────────────────
 

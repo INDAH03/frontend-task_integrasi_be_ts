@@ -5,7 +5,7 @@ import {
   sendInvite,
   deleteUser,
   resendInvite,
-  updateUserRole,
+  updateUser,
 } from './inviteSlice';
 import { fetchProjects } from './projectSlice';
 import { Button } from '@/components/ui/button';
@@ -13,8 +13,9 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectItem } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { AppDispatch, RootState } from '../../app/store';
-import { FaTrash, FaEdit, FaRedo, FaSearch } from 'react-icons/fa';
+import { FaTrash, FaEdit, FaRedo, } from 'react-icons/fa';
 import { toast } from 'sonner';
+import { InviteUser } from './inviteSlice'; 
 
 
 
@@ -70,7 +71,6 @@ const handleInvite = async () => {
   }
 };
 
-
   const handleResendInvite = async (uuid: string) => {
     try {
       await dispatch(resendInvite(uuid)).unwrap();
@@ -80,20 +80,41 @@ const handleInvite = async () => {
     }
   };
 
-  const handleEditRole = async (uuid: string) => {
-    const newRole = prompt('Masukkan role baru (admin/member):');
-    if (!newRole || (newRole !== 'admin' && newRole !== 'member')) {
-      alert('Role tidak valid!');
-      return;
-    }
+  const handleEditUser = async (user: InviteUser) => {
+  const newName = prompt('Masukkan nama baru (biarkan kosong jika tidak ingin mengubah):', user.name);
+  const newEmail = prompt('Masukkan email baru (biarkan kosong jika tidak ingin mengubah):', user.email);
+  const newRole = prompt('Masukkan role baru (admin/member) (biarkan kosong jika tidak ingin mengubah):', user.role);
 
-    try {
-      await dispatch(updateUserRole({ uuid, role: newRole })).unwrap();
-      alert('Role berhasil diperbarui.');
-    } catch {
-      alert('Gagal memperbarui role.');
-    }
+  if (newRole && !['admin', 'member'].includes(newRole)) {
+    alert('Role tidak valid!');
+    return;
+  }
+
+  const payload: {
+    uuid: string;
+    name?: string;
+    email?: string;
+    role?: string;
+  } = {
+    uuid: user.uuid,
   };
+
+  if (newName && newName !== user.name) payload.name = newName;
+  if (newEmail && newEmail !== user.email) payload.email = newEmail;
+  if (newRole && newRole !== user.role) payload.role = newRole;
+
+  if (!payload.name && !payload.email && !payload.role) {
+    alert('Tidak ada perubahan.');
+    return;
+  }
+
+  try {
+    await dispatch(updateUser(payload)).unwrap();
+    alert('User berhasil diperbarui.');
+  } catch {
+    alert('Gagal memperbarui user.');
+  }
+};
 
   const handleDeleteUser = async (uuid: string) => {
     const confirmed = confirm('Yakin ingin menghapus user ini?');
@@ -184,7 +205,8 @@ const handleInvite = async () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y">
-                  {paginatedUsers.map((user, index) => (
+                {paginatedUsers.map((user: InviteUser, index) => (
+
                     <tr key={user.uuid}>
                       <td className="px-6 py-4"><input type="checkbox" /></td>
                       <td className="px-6 py-4">{(currentPage - 1) * itemsPerPage + index + 1}</td>
@@ -201,7 +223,7 @@ const handleInvite = async () => {
                       <td className="px-6 py-4 text-center">
                         <div className="flex justify-center space-x-2">
                           <button title="Resend Invite" onClick={() => handleResendInvite(user.uuid)} className="text-blue-600"><FaRedo /></button>
-                          <button title="Edit Role" onClick={() => handleEditRole(user.uuid)} className="text-yellow-600"><FaEdit /></button>
+                          <button title="Edit User" onClick={() => handleEditUser(user)} className="text-yellow-600"><FaEdit /></button>
                           <button title="Delete User" onClick={() => handleDeleteUser(user.uuid)} className="text-red-600"><FaTrash /></button>
                         </div>
                       </td>

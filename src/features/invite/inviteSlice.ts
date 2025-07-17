@@ -22,14 +22,14 @@ const initialState: InviteState = {
 };
 
 export const fetchInvitedUsers = createAsyncThunk('invite/fetchAll', async () => {
-  const res = await axios.get('http://localhost:3000/api/invite');
+  const res = await axios.get('http://localhost:5001/api/invite');
   return res.data;
 });
 
 export const sendInvite = createAsyncThunk(
   'invite/sendInvite',
   async (payload: { email: string; role: string; project: string }) => {
-    const res = await axios.post('http://localhost:3000/api/invite', payload);
+    const res = await axios.post('http://localhost:5001/api/invite', payload);
     return res.data;
   }
 );
@@ -37,15 +37,21 @@ export const sendInvite = createAsyncThunk(
 export const resendInvite = createAsyncThunk(
   'invite/resendInvite',
   async (uuid: string) => {
-    const res = await axios.post(`http://localhost:3000/api/invite/resend/${uuid}`);
+    const res = await axios.post(`http://localhost:5001/api/invite/resend/${uuid}`);
     return res.data;
   }
 );
 
-export const updateUserRole = createAsyncThunk(
-  'invite/updateRole',
-  async ({ uuid, role }: { uuid: string; role: string }) => {
-    const res = await axios.put(`http://localhost:3000/api/invite/role/${uuid}`, { role });
+export const updateUser = createAsyncThunk(
+  'invite/updateUser',
+  async (payload: {
+    uuid: string;
+    name?: string;
+    email?: string;
+    role?: string;
+  }) => {
+    const { uuid, ...data } = payload;
+    const res = await axios.put(`http://localhost:5001/api/invite/${uuid}`, data);
     return res.data;
   }
 );
@@ -53,7 +59,7 @@ export const updateUserRole = createAsyncThunk(
 export const deleteUser = createAsyncThunk(
   'invite/deleteUser',
   async (uuid: string) => {
-    await axios.delete(`http://localhost:3000/api/invite/${uuid}`);
+    await axios.delete(`http://localhost:5001/api/invite/${uuid}`);
     return uuid;
   }
 );
@@ -86,10 +92,10 @@ const inviteSlice = createSlice({
         state.users = state.users.filter((user) => user.uuid !== action.payload);
       })
 
-      .addCase(updateUserRole.fulfilled, (state, action: PayloadAction<InviteUser>) => {
+      .addCase(updateUser.fulfilled, (state, action: PayloadAction<InviteUser>) => {
         const index = state.users.findIndex((u) => u.uuid === action.payload.uuid);
         if (index !== -1) {
-          state.users[index].role = action.payload.role;
+          state.users[index] = action.payload;
         }
       })
 
