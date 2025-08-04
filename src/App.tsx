@@ -4,13 +4,13 @@ import { Toaster } from 'sonner';
 
 function App() {
   return (
-<BrowserRouter>
-  <Toaster position="top-right" richColors />
-  <Routes>
-    <Route path="/invite-user" element={<InviteUserPage />} />
-  </Routes>
-</BrowserRouter>
-
+    <BrowserRouter>
+      <Toaster position="top-right" richColors />
+      <Routes>
+        <Route path="/" element={<InviteUserPage />} />
+        <Route path="/invite-user-dashboard" element={<InviteUserPage />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
 
