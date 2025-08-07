@@ -2,13 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   fetchInvitedUsers,
-  sendInvite,
   resendInviteUser,
   updateUser,
   fetchProjects,
   fetchRoles,
   InviteUser,
-  normalizeRole,
+  searchInvitedUsers,
 } from './inviteSlice';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,8 +15,10 @@ import { Select, SelectItem } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { AppDispatch, RootState } from '../../app/store';
 import { FaEdit, FaRedo } from 'react-icons/fa';
+import { useDebounce } from '@/hooks/useDebounce';
 import { toast } from 'sonner';
 import axios from 'axios';
+
 
 enum UserRole {
   SUPER_ADMIN = 'super_admin',
@@ -27,150 +28,122 @@ enum UserRole {
 
 export default function InviteUserPage() {
   const dispatch = useDispatch<AppDispatch>();
-  const { users, projects, loading: userLoading } = useSelector(
-    (state: RootState) => state.invite
-  );
+  const { users, projects, loading: userLoading } = useSelector((state: RootState) => state.invite);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState('');        
-  const [project, setProject] = useState(''); 
-
-const safeProjects: { uuid: string; name: string }[] = Array.isArray(projects)
-  ? projects.map((p: any) => ({
-      uuid: p.uuid ?? p.id,              
-      name: p.displayName ?? p.name,    
-    }))
-  : (projects as any)?.data?.map((p: any) => ({
-      uuid: p.uuid ?? p.id,
-      name: p.displayName ?? p.name,
-    })) ?? [];
+  const [role, setRole] = useState('');
+  const [project, setProject] = useState('');
 
   const itemsPerPage = 10;
 
+  const safeProjects: { uuid: string; name: string }[] = Array.isArray(projects)
+    ? projects.map((p: any) => ({ uuid: p.uuid ?? p.id, name: p.displayName ?? p.name }))
+    : (projects as any)?.data?.map((p: any) => ({ uuid: p.uuid ?? p.id, name: p.displayName ?? p.name })) ?? [];
+
   useEffect(() => {
-    dispatch(fetchInvitedUsers());
     dispatch(fetchProjects());
     dispatch(fetchRoles());
   }, [dispatch]);
 
-  const filteredUsers = (users ?? []).filter((user) => {
-    const keyword = searchTerm.toLowerCase();
-    const name = user?.name ?? '';
-    const email = user?.email ?? '';
-    const uuid = user?.uuid ?? '';
+useEffect(() => {
+  dispatch(fetchInvitedUsers({
+    page: currentPage,
+    limit: itemsPerPage,
+  }));
+}, [dispatch, currentPage]);
 
-    return (
-      name.toLowerCase().includes(keyword) ||
-      email.toLowerCase().includes(keyword) ||
-      uuid.toLowerCase().includes(keyword)
-    );
-  });
+const debouncedSearch = useDebounce(searchTerm, 500);
 
-  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
-  const paginatedUsers = filteredUsers.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+useEffect(() => {
+dispatch(searchInvitedUsers({
+  page: currentPage,
+  limit: itemsPerPage,
+  query: debouncedSearch,
+}));
+}, [debouncedSearch, currentPage, dispatch]);
 
-const handleInvite = async () => {
-  if (!email || !role || !project) {
-    toast.error('Lengkapi semua field.');
-    return;
-  }
+  const handleInvite = async () => {
+    if (!email || !role || !project) {
+      toast.error('Lengkapi semua field.');
+      return;
+    }
 
-  const emails = email
-    .split(',')
-    .map((e) => e.trim())
-    .filter(Boolean);
+    const emails = email.split(',').map((e) => e.trim()).filter(Boolean);
 
-  const payload = {
-    emails,
-    role: role as UserRole, 
-    projectUuid: project,
+    const payload = {
+      emails,
+      role: role as UserRole,
+      projectUuid: project,
+    };
+
+    try {
+      const res = await axios.post(
+        'http://localhost:5001/api/v1/invite-user-dashboard/invite',
+        payload
+      );
+
+      if (res.data.success) {
+        toast.success('✅ Invite berhasil dikirim!');
+        setEmail('');
+        setRole('');
+        setProject('');
+        dispatch(fetchInvitedUsers({ page: currentPage, limit: itemsPerPage }));
+      } else {
+        toast.error('❌ Invite gagal: ' + res.data.message);
+      }
+    } catch (err: any) {
+      toast.error('❌ Error kirim invite');
+      console.error(err);
+    }
   };
 
-  try {
-    const res = await axios.post(
-      'http://localhost:5001/api/v1/invite-user-dashboard/invite',
-      payload
-    );
-
-    if (res.data.success) {
-      toast.success('✅ Invite berhasil dikirim!');
-      setEmail(''); // Reset input email biar lebih UX friendly
-      setRole('');
-      setProject('');
-    } else {
-      toast.error('❌ Invite gagal: ' + res.data.message);
+  const handleResendInvite = async (user: InviteUser) => {
+    try {
+      await dispatch(
+        resendInviteUser({
+          emails: [user.email],
+          projectUuid: user.projectUuid,
+          role: user.role,
+        })
+      ).unwrap();
+      toast.success('Undangan berhasil dikirim ulang!');
+    } catch (err) {
+      toast.error('Gagal mengirim ulang undangan.');
+      console.error(err);
     }
-  } catch (err: any) {
-    toast.error('❌ Error kirim invite');
-    console.error(err);
-  }
-};
+  };
 
-const handleResendInvite = async (user: InviteUser) => {
-  try {
-    await dispatch(
-      resendInviteUser({
-        emails: [user.email],
-        projectUuid: user.projectUuid,
-        role: user.role, // ✅ kirim role asli
-      })
-    ).unwrap();
+  const handleEditUser = async (user: InviteUser) => {
+    const newEmail = prompt('Masukkan email baru:', user.email);
+    const newRole = prompt('Masukkan role baru (super_admin/admin/member):', user.role);
 
-    toast.success('Undangan berhasil dikirim ulang!');
-  } catch (err) {
-    toast.error('Gagal mengirim ulang undangan.');
-    console.error(err);
-  }
-};
+    if (newRole && !Object.values(UserRole).includes(newRole as UserRole)) {
+      alert('Role tidak valid!');
+      return;
+    }
 
+    const payload: { uuid: string; email?: string; role?: UserRole } = { uuid: user.uuid };
+    if (newEmail && newEmail !== user.email) payload.email = newEmail;
+    if (newRole && newRole !== user.role) payload.role = newRole as UserRole;
 
-const handleEditUser = async (user: InviteUser) => {
-  const newName = prompt(
-    'Masukkan nama baru (biarkan kosong jika tidak ingin mengubah):',
-    user.name
-  );
-  const newEmail = prompt(
-    'Masukkan email baru (biarkan kosong jika tidak ingin mengubah):',
-    user.email
-  );
-  const newRole = prompt(
-    'Masukkan role baru (super_admin/admin/member) (biarkan kosong jika tidak ingin mengubah):',
-    user.role
-  );
+    if (!payload.email && !payload.role) {
+      alert('Tidak ada perubahan.');
+      return;
+    }
 
-  if (newRole && !Object.values(UserRole).includes(newRole as UserRole)) {
-    alert('Role tidak valid!');
-    return;
-  }
+    try {
+      await dispatch(updateUser(payload)).unwrap();
+      alert('User berhasil diperbarui.');
+      dispatch(fetchInvitedUsers({ page: currentPage, limit: itemsPerPage }));
+    } catch {
+      alert('Gagal memperbarui user.');
+    }
+  };
 
-  const payload: {
-    uuid: string;
-    name?: string;
-    email?: string;
-    role?: UserRole;
-  } = { uuid: user.uuid };
-
-  if (newName && newName !== user.name) payload.name = newName;
-  if (newEmail && newEmail !== user.email) payload.email = newEmail;
-  if (newRole && newRole !== user.role) payload.role = newRole as UserRole;
-
-  if (!payload.name && !payload.email && !payload.role) {
-    alert('Tidak ada perubahan.');
-    return;
-  }
-
-  try {
-    await dispatch(updateUser(payload)).unwrap();
-    alert('User berhasil diperbarui.');
-  } catch {
-    alert('Gagal memperbarui user.');
-  }
-};
+  const filteredUsers = users?.data ?? [];
+  const totalPages = users?.totalPages ?? 1;
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -183,20 +156,14 @@ const handleEditUser = async (user: InviteUser) => {
                 <label className="text-sm font-medium mb-1">Project</label>
                 <Select value={project} onValueChange={setProject}>
                   <SelectItem value="">Select project</SelectItem>
-                  {safeProjects.map((proj: { uuid: string; name: string }) => (
-                    <SelectItem key={proj.uuid} value={proj.uuid}>
-                      {proj.name ?? 'No Name'}
-                    </SelectItem>
+                  {safeProjects.map((proj) => (
+                    <SelectItem key={proj.uuid} value={proj.uuid}>{proj.name}</SelectItem>
                   ))}
                 </Select>
               </div>
               <div className="flex flex-col">
                 <label className="text-sm font-medium mb-1">Email</label>
-                <Input
-                  placeholder="user@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
+                <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="user@example.com" />
               </div>
               <div className="flex flex-col">
                 <label className="text-sm font-medium mb-1">Role</label>
@@ -207,12 +174,10 @@ const handleEditUser = async (user: InviteUser) => {
                   <SelectItem value={UserRole.MEMBER}>Member</SelectItem>
                 </Select>
               </div>
-
             </div>
           </CardContent>
         </Card>
 
-        {/* ==== SEARCH & LIST ==== */}
         <Card>
           <CardContent className="px-6 pt-6 pb-0">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -220,25 +185,21 @@ const handleEditUser = async (user: InviteUser) => {
               <Input
                 placeholder="⌕ Search..."
                 value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setCurrentPage(1);
-                }}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full md:w-64"
               />
             </div>
           </CardContent>
         </Card>
+
         <Card>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="min-w-full">
                 <thead className="bg-gray-100">
                   <tr>
-                    <th className="px-6 py-3"><input type="checkbox" /></th>
-                    <th className="px-6 py-3">NO</th>
+                    <th className="px-6 py-3">#</th>
                     <th className="px-6 py-3">UUID</th>
-                    <th className="px-6 py-3">Nama</th>
                     <th className="px-6 py-3">Email</th>
                     <th className="px-6 py-3">Role</th>
                     <th className="px-6 py-3 text-center">Action</th>
@@ -246,41 +207,20 @@ const handleEditUser = async (user: InviteUser) => {
                 </thead>
                 <tbody className="bg-white divide-y">
                   {userLoading ? (
-                    <tr>
-                      <td colSpan={7} className="text-center py-6">
-                        Loading data...
-                      </td>
-                    </tr>
-                  ) : paginatedUsers.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="text-center py-6">
-                        No users found.
-                      </td>
-                    </tr>
+                    <tr><td colSpan={5} className="text-center py-6">Loading...</td></tr>
+                  ) : filteredUsers.length === 0 ? (
+                    <tr><td colSpan={5} className="text-center py-6">No users found.</td></tr>
                   ) : (
-                    paginatedUsers.map((user, index) => (
+                    filteredUsers.map((user, index) => (
                       <tr key={user.uuid}>
-                        <td className="px-6 py-4"><input type="checkbox" /></td>
                         <td className="px-6 py-4">{(currentPage - 1) * itemsPerPage + index + 1}</td>
                         <td className="px-6 py-4">{user.uuid}</td>
-                        <td className="px-6 py-4">{user.name}</td>
                         <td className="px-6 py-4">{user.email}</td>
                         <td className="px-6 py-4">{user.role}</td>
                         <td className="px-6 py-4 text-center">
                           <div className="flex justify-center space-x-2">
-                          <button
-                            title="Resend Invite"
-                            onClick={() => handleResendInvite(user)}
-                            className="text-blue-600">
-                            <FaRedo />
-                            </button>
-                            <button
-                              title="Edit User"
-                              onClick={() => handleEditUser(user)}
-                              className="text-yellow-600"
-                            >
-                              <FaEdit />
-                            </button>
+                            <button onClick={() => handleResendInvite(user)} className="text-blue-600"><FaRedo /></button>
+                            <button onClick={() => handleEditUser(user)} className="text-yellow-600"><FaEdit /></button>
                           </div>
                         </td>
                       </tr>
@@ -293,30 +233,20 @@ const handleEditUser = async (user: InviteUser) => {
             {/* Pagination */}
             <div className="bg-gray-50 px-6 py-4 flex flex-col md:flex-row justify-between items-center border-t">
               <div className="text-sm text-gray-500 mb-2 md:mb-0">
-                Showing {paginatedUsers.length} of {users.length} entries
+                Page {currentPage} of {totalPages}
               </div>
-              <div className="flex items-center space-x-1">
-                <button onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))} disabled={currentPage === 1}>
-                  &lt;
-                </button>
-                <span className="px-3 py-1">{currentPage}</span>
-                <button
-                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                  disabled={currentPage === totalPages}
-                >
-                  &gt;
-                </button>
+              <div className="flex items-center space-x-2">
+                <button disabled={currentPage === 1} onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}>&lt;</button>
+                <span>{currentPage}</span>
+                <button disabled={currentPage === totalPages} onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}>&gt;</button>
               </div>
             </div>
 
-            {/* Submit Button */}
+            {/* Submit */}
             <div className="flex justify-center mt-4">
-            <Button
-              className="w-full md:w-48 bg-blue-600 hover:bg-blue-700 text-white"
-              disabled={userLoading || !email || !role || !project}
-              onClick={handleInvite} >
-              Submit
-            </Button>
+              <Button className="w-full md:w-48 bg-blue-600 hover:bg-blue-700 text-white" onClick={handleInvite} disabled={userLoading || !email || !role || !project}>
+                Submit
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -324,3 +254,4 @@ const handleEditUser = async (user: InviteUser) => {
     </div>
   );
 }
+

@@ -1,6 +1,8 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import axiosInstance from '@/utils/axiosInstance';
 import axios from 'axios';
+import React, { useState, useEffect } from 'react';
+
 
 export const api = axios.create({
   baseURL: 'http://localhost:5001/api/v1',
@@ -24,6 +26,7 @@ export interface InviteUser {
   email: string;
   role: string;
   projectUuid: string;
+  query?: string;
 }
 
 export interface Project {
@@ -37,20 +40,38 @@ export interface Role {
 }
 
 interface InviteState {
-  users: InviteUser[];
+  users: {
+    data: InviteUser[];
+    totalPages: number;
+    totalRows: number;
+  };
   projects: Project[];
   roles: Role[];
   loading: boolean;
   error: string | null;
+  isSearching: boolean;
 }
 
 const initialState: InviteState = {
-  users: [],
+  users: {
+    data: [],
+    totalPages: 1,
+    totalRows: 0,
+  },
   projects: [],
   roles: [],
   loading: false,
   error: null,
+  isSearching: false,
 };
+
+interface SearchInviteUserResponse {
+  page: number;
+  limit: number;
+  query?: string;
+  [key: string]: any;
+}
+
 
 // inviteSlice.ts
 function formatUUID(uuid: string): string {
@@ -69,11 +90,33 @@ export function normalizeRole(role: string): 'member' | 'admin' | 'super_admin' 
   return '';
 }
 
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler); // Clear jika value berubah sebelum delay selesai
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
+
 // === THUNKS ===
-export const fetchInvitedUsers = createAsyncThunk('invite/fetchInvitedUsers', async () => {
-  const res = await axiosInstance.get('/invite');
-  return res.data;
-});
+export const fetchInvitedUsers = createAsyncThunk(
+  'invite/fetchInvitedUsers',
+  async ({ page, limit }: { page: number; limit: number }) => {
+    const res = await axios.get(`http://localhost:5001/api/v1/invite-user-dashboard/invite`, {
+      params: { page, limit },
+    });
+    return res.data;
+  }
+);
 
 export const sendInvite = createAsyncThunk(
   'invite/sendInvite',
@@ -101,7 +144,7 @@ export const resendInviteUser = createAsyncThunk(
         return rejectWithValue(result?.error || 'Gagal resend invite');
       }
 
-      return result; // 🔹 Return hasil resend
+      return result; 
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || 'Request gagal');
     }
@@ -127,10 +170,30 @@ export const fetchRoles = createAsyncThunk('invite/fetchRoles', async () => {
   return res.data;
 });
 
-export const searchInvitedUsers = createAsyncThunk('invite/searchUsers', async (search: string) => {
-  const res = await axiosInstance.get('/search', { params: { search } });
-  return res.data as InviteUser[];
-});
+export const searchInvitedUsers = createAsyncThunk(
+  'invitedUsers/search',
+  async ({ page, limit, query }: { page: number; limit: number; query?: string }) => {
+    const response = await axios.get('/api/invite-user-dashboard', {
+      params: { page, limit, search: query }
+    });
+    return response.data;
+  }
+);
+
+// export const searchInvitedUsers = createAsyncThunk(
+//   'invite/searchUsers',
+// async ({ query, page, limit }: { query: string; page: number; limit: number }) => {
+//   const response = await axios.get('/api/invite/search', {
+//     params: {
+//       query,
+//       page,
+//       limit,
+//     },
+//   });
+//   return response.data;
+// }
+// );
+
 
 // === SLICE ===
 const inviteSlice = createSlice({
@@ -139,56 +202,48 @@ const inviteSlice = createSlice({
   reducers: {},
   extraReducers: (builder) => {
     builder
-      // ==== FETCH USERS ====
       .addCase(fetchInvitedUsers.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
-      .addCase(fetchInvitedUsers.fulfilled, (state, action: PayloadAction<any>) => {
-        state.loading = false;
-        state.error = null;
+        .addCase(fetchInvitedUsers.fulfilled, (state, action: PayloadAction<any>) => {
+      const payload = action.payload;
+      const rawUsers = Array.isArray(payload.data) ? payload.data : [];
 
-        const payload = action.payload;
-        const rawUsers =
-          Array.isArray(payload.data) ? payload.data :
-          Array.isArray(payload.data?.rows) ? payload.data.rows :
-          Array.isArray(payload) ? payload :
-          [];
-
-        console.log("🔹 FETCH USERS PAYLOAD:", payload);
-        console.log("🔹 RAW USERS:", rawUsers); 
-        state.users = rawUsers.map((u: any) => ({
-          uuid: formatUUID(u.uuid ?? ''), // ✅ sekarang sudah valid UUID
+      state.users = {
+        data: rawUsers.map((u: any) => ({
+          uuid: formatUUID(u.uuid ?? ''),
           name: u.name ?? '',
           email: u.email ?? '',
           role: u.role ?? '',
           projectUuid: formatUUID(u.project?.uuid ?? u.projectUuid ?? u.project_uuid ?? ''),
-        }));
+        })),
+        totalPages: payload.totalPages ?? 1,
+        totalRows: payload.totalRows ?? 0,
+      };
+
+      state.loading = false;
       })
       .addCase(fetchInvitedUsers.rejected, (state, action) => {
         state.loading = false;
         state.error = action.error.message || 'Failed to fetch invited users';
       })
 
-      // === SEND INVITE ===
       .addCase(sendInvite.fulfilled, (state, action: PayloadAction<InviteUser>) => {
-        state.users.push(action.payload);
+        state.users.data.push(action.payload); 
       })
 
-      // === UPDATE USER ===
       .addCase(updateUser.fulfilled, (state, action: PayloadAction<InviteUser>) => {
-        const index = state.users.findIndex((u) => u.uuid === action.payload.uuid);
+        const index = state.users.data.findIndex((u: InviteUser) => u.uuid === action.payload.uuid);
         if (index !== -1) {
-          state.users[index] = action.payload;
+          state.users.data[index] = action.payload;
         }
       })
 
-      // === FETCH PROJECTS ===
       .addCase(fetchProjects.fulfilled, (state, action: PayloadAction<any>) => {
         state.projects = action.payload.data || action.payload || [];
       })
 
-      // === FETCH ROLES ===
       .addCase(fetchRoles.fulfilled, (state, action: PayloadAction<any>) => {
         const raw = action.payload.data || action.payload;
         state.roles = raw.map((r: any) => ({
@@ -197,14 +252,18 @@ const inviteSlice = createSlice({
         }));
       })
 
-      // ==== SEARCH USERS ===
-      .addCase(searchInvitedUsers.fulfilled, (state, action: PayloadAction<InviteUser[]>) => {
-        state.users = action.payload.map((u) => ({
-          ...u,
-          uuid: formatUuid(u.uuid),
-          projectUuid: formatUuid(u.projectUuid),
-        }));
-      });
+      .addCase(searchInvitedUsers.fulfilled, (state, action: PayloadAction<SearchInviteUserResponse>) => {
+        state.users = {
+        data: action.payload.data.map((u: InviteUser) => ({
+            ...u,
+            uuid: formatUuid(u.uuid),
+            projectUuid: formatUuid(u.projectUuid),
+          })),
+          totalPages: action.payload.totalPages,
+          totalRows: action.payload.totalRows,
+        };
+      })
+
   },
 });
 
