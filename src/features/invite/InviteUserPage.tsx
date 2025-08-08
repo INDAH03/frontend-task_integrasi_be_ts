@@ -69,24 +69,6 @@ useEffect(() => {
   }
 }, [debouncedSearch, currentPage, dispatch]);
 
-
-// useEffect(() => {
-//   dispatch(fetchInvitedUsers({
-//     page: currentPage,
-//     limit: itemsPerPage,
-//   }));
-// }, [dispatch, currentPage]);
-
-// const debouncedSearch = useDebounce(searchTerm, 500);
-
-// useEffect(() => {
-// dispatch(searchInvitedUsers({
-//   page: currentPage,
-//   limit: itemsPerPage,
-//   query: debouncedSearch,
-// }));
-// }, [debouncedSearch, currentPage, dispatch]);
-
   const handleInvite = async () => {
     if (!email || !role || !project) {
       toast.error('Lengkapi semua field.');
