@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const axiosInstance = axios.create({
-  baseURL: 'http://localhost:5001/api/v1/invite-user-dashboard',
+  baseURL: 'http://localhost:5001/api/v1',
 });
 
 axiosInstance.interceptors.request.use((config) => {

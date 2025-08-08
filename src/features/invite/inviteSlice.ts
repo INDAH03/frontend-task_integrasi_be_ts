@@ -99,7 +99,7 @@ function useDebounce<T>(value: T, delay: number): T {
     }, delay);
 
     return () => {
-      clearTimeout(handler); // Clear jika value berubah sebelum delay selesai
+      clearTimeout(handler); 
     };
   }, [value, delay]);
 
@@ -121,7 +121,7 @@ export const fetchInvitedUsers = createAsyncThunk(
 export const sendInvite = createAsyncThunk(
   'invite/sendInvite',
   async ({ emails, role, projectUuid }: { emails: string[]; role: string; projectUuid: string }) => {
-    const response = await api.post('/invite-user-dashboard/invite', {
+    const response = await api.post('`http://localhost:5001/api/v1/invite-user-dashboard/invite', {
       emails,
       role,
       projectUuid: formatUuid(projectUuid),
@@ -134,7 +134,7 @@ export const resendInviteUser = createAsyncThunk(
   'invite/resendInvite',
   async (payload: { emails: string[]; projectUuid: string; role: string }, { rejectWithValue }) => {
     try {
-      const res = await axiosInstance.post('/resend', {
+      const res = await axiosInstance.post('http://localhost:5001/api/v1/invite-user-dashboard/resend', {
         ...payload,
         role: normalizeRole(payload.role),
       });
@@ -155,45 +155,30 @@ export const updateUser = createAsyncThunk(
   'invite/updateUser',
   async (payload: { uuid: string; name?: string; email?: string; role?: string }) => {
     const { uuid, ...data } = payload;
-    const res = await axiosInstance.put(`/uuid/${formatUuid(uuid)}`, data);
+    const res = await axiosInstance.put(`http://localhost:5001/api/v1/invite-user-dashboard/uuid/${formatUuid(uuid)}`, data);
     return res.data as InviteUser;
   }
 );
 
 export const fetchProjects = createAsyncThunk('invite/fetchProjects', async () => {
-  const res = await axiosInstance.get('/projects');
+  const res = await axiosInstance.get('http://localhost:5001/api/v1/invite-user-dashboard/projects');
   return res.data;
 });
 
 export const fetchRoles = createAsyncThunk('invite/fetchRoles', async () => {
-  const res = await axiosInstance.get('/roles');
+  const res = await axiosInstance.get('`http://localhost:5001/api/v1/invite-user-dashboard/roles');
   return res.data;
 });
 
 export const searchInvitedUsers = createAsyncThunk(
   'invitedUsers/search',
   async ({ page, limit, query }: { page: number; limit: number; query?: string }) => {
-    const response = await axios.get('/api/invite-user-dashboard', {
-      params: { page, limit, search: query }
+    const response = await axiosInstance.get('/invite-user-dashboard/invite', {
+      params: { page, limit, search: query },
     });
     return response.data;
   }
 );
-
-// export const searchInvitedUsers = createAsyncThunk(
-//   'invite/searchUsers',
-// async ({ query, page, limit }: { query: string; page: number; limit: number }) => {
-//   const response = await axios.get('/api/invite/search', {
-//     params: {
-//       query,
-//       page,
-//       limit,
-//     },
-//   });
-//   return response.data;
-// }
-// );
-
 
 // === SLICE ===
 const inviteSlice = createSlice({
@@ -213,7 +198,6 @@ const inviteSlice = createSlice({
       state.users = {
         data: rawUsers.map((u: any) => ({
           uuid: formatUUID(u.uuid ?? ''),
-          name: u.name ?? '',
           email: u.email ?? '',
           role: u.role ?? '',
           projectUuid: formatUUID(u.project?.uuid ?? u.projectUuid ?? u.project_uuid ?? ''),
@@ -246,23 +230,26 @@ const inviteSlice = createSlice({
 
       .addCase(fetchRoles.fulfilled, (state, action: PayloadAction<any>) => {
         const raw = action.payload.data || action.payload;
-        state.roles = raw.map((r: any) => ({
+        state.roles = raw.map((r: any) => ({  
           uuid: r.id,
           name: r.roleName,
         }));
       })
 
-      .addCase(searchInvitedUsers.fulfilled, (state, action: PayloadAction<SearchInviteUserResponse>) => {
-        state.users = {
-        data: action.payload.data.map((u: InviteUser) => ({
-            ...u,
-            uuid: formatUuid(u.uuid),
-            projectUuid: formatUuid(u.projectUuid),
-          })),
-          totalPages: action.payload.totalPages,
-          totalRows: action.payload.totalRows,
-        };
-      })
+.addCase(searchInvitedUsers.fulfilled, (state, action: PayloadAction<SearchInviteUserResponse>) => {
+  const rawUsers = Array.isArray(action.payload.data) ? action.payload.data : [];
+  state.users = {
+  data: rawUsers.map((u: any) => ({
+    uuid: formatUUID(u.uuid ?? ''),
+    name: u.name ?? '',
+    email: u.email ?? '',
+    role: u.role ?? '',
+    projectUuid: formatUUID(u.project?.uuid ?? u.projectUuid ?? u.project_uuid ?? ''),
+  })),
+    totalPages: action.payload.totalPages ?? 1,
+    totalRows: action.payload.totalRows ?? 0,
+  };
+});
 
   },
 });

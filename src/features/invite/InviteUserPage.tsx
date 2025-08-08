@@ -19,7 +19,6 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { toast } from 'sonner';
 import axios from 'axios';
 
-
 enum UserRole {
   SUPER_ADMIN = 'super_admin',
   ADMIN = 'admin',
@@ -31,6 +30,7 @@ export default function InviteUserPage() {
   const { users, projects, loading: userLoading } = useSelector((state: RootState) => state.invite);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearch = useDebounce(searchTerm, 500);
   const [currentPage, setCurrentPage] = useState(1);
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('');
@@ -48,21 +48,44 @@ export default function InviteUserPage() {
   }, [dispatch]);
 
 useEffect(() => {
-  dispatch(fetchInvitedUsers({
-    page: currentPage,
-    limit: itemsPerPage,
-  }));
-}, [dispatch, currentPage]);
-
-const debouncedSearch = useDebounce(searchTerm, 500);
-
-useEffect(() => {
-dispatch(searchInvitedUsers({
-  page: currentPage,
-  limit: itemsPerPage,
-  query: debouncedSearch,
-}));
+  console.log('debouncedSearch', debouncedSearch);
+  if (debouncedSearch) {
+    console.log('Dispatching searchInvitedUsers...');
+    dispatch(
+      searchInvitedUsers({
+        page: currentPage,
+        limit: itemsPerPage,
+        query: debouncedSearch,
+      })
+    );
+  } else {
+    console.log('Dispatching fetchInvitedUsers...');
+    dispatch(
+      fetchInvitedUsers({
+        page: currentPage,
+        limit: itemsPerPage,
+      })
+    );
+  }
 }, [debouncedSearch, currentPage, dispatch]);
+
+
+// useEffect(() => {
+//   dispatch(fetchInvitedUsers({
+//     page: currentPage,
+//     limit: itemsPerPage,
+//   }));
+// }, [dispatch, currentPage]);
+
+// const debouncedSearch = useDebounce(searchTerm, 500);
+
+// useEffect(() => {
+// dispatch(searchInvitedUsers({
+//   page: currentPage,
+//   limit: itemsPerPage,
+//   query: debouncedSearch,
+// }));
+// }, [debouncedSearch, currentPage, dispatch]);
 
   const handleInvite = async () => {
     if (!email || !role || !project) {
@@ -157,7 +180,7 @@ dispatch(searchInvitedUsers({
                 <Select value={project} onValueChange={setProject}>
                   <SelectItem value="">Select project</SelectItem>
                   {safeProjects.map((proj) => (
-                    <SelectItem key={proj.uuid} value={proj.uuid}>{proj.name}</SelectItem>
+                     <SelectItem key={proj.uuid} value={proj.uuid}>{proj.name}</SelectItem>
                   ))}
                 </Select>
               </div>
@@ -186,7 +209,7 @@ dispatch(searchInvitedUsers({
                 placeholder="⌕ Search..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full md:w-64"
+                className="w-full md:w-64" 
               />
             </div>
           </CardContent>
